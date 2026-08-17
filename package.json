@@ -1,0 +1,20 @@
+{
+  "name": "nuvio-calcio-tv-addon",
+  "version": "1.0.0",
+  "description": "Addon Stremio/Nuvio: canale italiano, piattaforma e data delle partite di calcio (TheSportsDB + scraping guida TV)",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "axios": "^1.7.7",
+    "cheerio": "^1.0.0",
+    "node-cache": "^5.1.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
