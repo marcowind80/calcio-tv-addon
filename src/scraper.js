@@ -78,6 +78,9 @@ function parsePage(html) {
   }
 
   // Tree-walk di tutti i nodi (elementi e testo) in ordine documentale.
+  // insideCompetitionLink: true quando stiamo attraversando i figli del
+  // link della competizione stessa, per non confondere il suo testo interno
+  // (es. "Coppa Italia") con il testo del canale che viene DOPO quel link.
   function walk(node) {
     if (!node) return;
     const nodes = Array.isArray(node) ? node : [node];
@@ -86,13 +89,19 @@ function parsePage(html) {
         const txt = (n.data || '').trim();
         if (txt) {
           // Orario HH:MM isolato -> assegna al blocco pending
-          const timeMatch = txt.match(/^(\d{2}:\d{2})$/);
-          if (timeMatch && pending && !pending.time) {
+          const timeMatch = txt.match(/(\d{2}:\d{2})/);
+          if (timeMatch && pending && !pending.time && pending.teams.length >= 1) {
             pending.time = timeMatch[1];
           }
-          // Testo tipo "- DAZN" o "- Canale 20" dopo il link competizione
-          if (pending && pending.channel === null && /^-\s*\S/.test(txt)) {
-            pending.channel = txt.replace(/^-\s*/, '').trim();
+          // Testo canale: compare come nodo di testo FRATELLO (non figlio)
+          // subito dopo il link della competizione, tipo " - DAZN".
+          // pending.awaitingChannelText è settato solo appena creato il blocco.
+          if (pending && pending.channel === null && pending.awaitingChannelText && !timeMatch) {
+            const cleaned = txt.replace(/^-+\s*/, '').trim();
+            if (cleaned) {
+              pending.channel = cleaned;
+              pending.awaitingChannelText = false;
+            }
           }
         }
       } else if (n.type === 'tag') {
@@ -112,11 +121,23 @@ function parsePage(html) {
               channel: null,
               time: null,
               teams: [],
+              awaitingChannelText: true,
             };
+            // Non scendiamo nei figli del link competizione: il suo testo
+            // interno è già stato letto con $el.text() sopra.
+            continue;
           } else if (href.includes('team.php?team=')) {
             if (!pending) {
-              pending = { date: currentDate, competition: null, channel: null, time: null, teams: [] };
+              pending = {
+                date: currentDate,
+                competition: null,
+                channel: null,
+                time: null,
+                teams: [],
+                awaitingChannelText: false,
+              };
             }
+            pending.awaitingChannelText = false;
             const teamCode = (href.match(/team=([a-z0-9]+)/i) || [])[1] || null;
             pending.teams.push({ name: $el.text().trim(), code: teamCode });
           }
