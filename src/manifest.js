@@ -1,12 +1,13 @@
 // Manifest protocollo Stremio/Nuvio.
-// Nuvio è compatibile con il protocollo addon standard di Stremio, quindi
-// usiamo un manifest.json conforme, con un catalogo custom "calcio_tv_ita".
+// Il catalogo è SFOGLIABILE: si apre mostrando le partite dei prossimi giorni
+// con il canale italiano. La ricerca è opzionale (non isRequired), altrimenti
+// Stremio/Nuvio non mostrerebbe affatto il catalogo nella schermata principale.
 module.exports = {
   id: 'org.marco.calciotvita',
-  version: '1.0.0',
+  version: '1.1.0',
   name: 'Calcio TV Italia',
   description:
-    'Cerca una squadra o una partita di calcio e scopri su quale canale/piattaforma italiana viene trasmessa e in che data. Dati eventi da TheSportsDB, dati canale da calciointv.com (fonte non ufficiale, best-effort).',
+    'Partite di calcio con canale/piattaforma italiana e data. Dati canale da calciointv.com (fonte non ufficiale, best-effort).',
   logo: 'https://www.thesportsdb.com/images/logo-back.png',
   resources: ['catalog', 'meta'],
   types: ['tv'],
@@ -15,7 +16,7 @@ module.exports = {
       type: 'tv',
       id: 'calcio_tv_ita',
       name: 'Calcio TV Italia',
-      extra: [{ name: 'search', isRequired: true }],
+      extra: [{ name: 'search', isRequired: false }],
     },
   ],
   idPrefixes: ['calciotvita_'],

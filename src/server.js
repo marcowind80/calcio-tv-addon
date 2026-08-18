@@ -1,84 +1,118 @@
 const express = require('express');
 const manifest = require('./manifest');
 const { getUpcomingByTeam, getEventByMatchup } = require('./matchup');
+const scraper = require('./scraper');
+const { encodeEventId, decodeEventId } = require('./eventId');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
 
-// CORS aperto: richiesto dal protocollo Stremio/Nuvio per far sì che l'app
-// possa contattare l'addon da qualsiasi origine.
+// CORS aperto: richiesto dal protocollo Stremio/Nuvio.
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', '*');
   next();
 });
 
-app.get('/manifest.json', (req, res) => {
-  res.json(manifest);
-});
+app.get('/manifest.json', (req, res) => res.json(manifest));
 
-// Catalogo con ricerca: Nuvio/Stremio chiamano
-// /catalog/tv/calcio_tv_ita/search=NOME_SQUADRA.json
-app.get('/catalog/tv/:id/:extra?.json', async (req, res) => {
+function labelFor(ev) {
+  return `${ev.home} - ${ev.away}`;
+}
+
+function descriptionFor(ev) {
+  const parts = [];
+  if (ev.competition) parts.push(`Competizione: ${ev.competition}`);
+  const when = [ev.date, ev.time].filter(Boolean).join(' ');
+  if (when) parts.push(`Data: ${when}`);
+  parts.push(
+    ev.channel
+      ? `Canale/Piattaforma IT: ${ev.channel}`
+      : 'Canale/Piattaforma IT: non disponibile per questo evento'
+  );
+  parts.push('Fonte canale: calciointv.com (non ufficiale)');
+  return parts.join('\n');
+}
+
+function toMeta(ev) {
+  return {
+    id: encodeEventId(ev),
+    type: 'tv',
+    name: labelFor(ev),
+    description: descriptionFor(ev),
+    releaseInfo: [ev.date, ev.time].filter(Boolean).join(' '),
+    genres: [ev.competition, ev.channel].filter(Boolean),
+  };
+}
+
+// Catalogo. Due modalità:
+//  - senza search  -> /catalog/tv/calcio_tv_ita.json          (lista sfogliabile)
+//  - con search    -> /catalog/tv/calcio_tv_ita/search=NOME.json
+app.get('/catalog/tv/:id.json', async (req, res) => {
   try {
-    const extra = req.params.extra || '';
-    const searchMatch = decodeURIComponent(extra).match(/search=([^&]+)/);
-    const query = searchMatch ? decodeURIComponent(searchMatch[1]) : null;
-
-    if (!query) {
-      return res.json({ metas: [] });
-    }
-
-    const result = await getUpcomingByTeam(query);
-    if (!result.found) {
-      return res.json({ metas: [] });
-    }
-
-    const metas = result.events.map((ev) => ({
-      id: `calciotvita_${ev.idEvent}`,
-      type: 'tv',
-      name: `${ev.home} - ${ev.away}`,
-      poster: result.team.badge || undefined,
-      description: buildDescription(ev),
-      releaseInfo: ev.dateFormatted || undefined,
-    }));
-
-    res.json({ metas });
+    const all = await scraper.getAllEvents();
+    res.json({ metas: all.map(toMeta) });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ metas: [], error: 'internal_error' });
+    console.error('catalog error:', err.message);
+    res.json({ metas: [] });
   }
 });
 
-// Meta dettaglio: Nuvio chiama /meta/tv/calciotvita_<idEvent>.json
-// Qui non abbiamo un lookup diretto per idEvent isolato senza rifare la
-// ricerca; per semplicità il dettaglio essenziale è già nella description
-// del catalog. Questo endpoint risponde comunque in modo conforme.
-app.get('/meta/tv/:id.json', async (req, res) => {
-  res.json({
-    meta: {
-      id: req.params.id,
-      type: 'tv',
-      name: 'Dettaglio partita',
-      description: 'Usa la ricerca del catalogo per i dettagli di canale/piattaforma e data.',
-    },
-  });
+app.get('/catalog/tv/:id/:extra.json', async (req, res) => {
+  try {
+    const extra = decodeURIComponent(req.params.extra || '');
+    const m = extra.match(/search=([^&]+)/);
+    const query = m ? decodeURIComponent(m[1]) : null;
+
+    if (!query) {
+      const all = await scraper.getAllEvents();
+      return res.json({ metas: all.map(toMeta) });
+    }
+
+    const found = await scraper.findEventsByTeamName(query);
+    res.json({ metas: found.map(toMeta) });
+  } catch (err) {
+    console.error('catalog search error:', err.message);
+    res.json({ metas: [] });
+  }
 });
 
-// Endpoint pratico REST (non-Stremio) per test manuali o uso diretto via browser/curl:
-//   GET /search?team=Juventus
-//   GET /search?teamA=Juventus&teamB=Napoli
+// Dettaglio evento
+app.get('/meta/tv/:id.json', async (req, res) => {
+  try {
+    const decoded = decodeEventId(req.params.id);
+    if (!decoded) return res.json({ meta: null });
+
+    const all = await scraper.getAllEvents();
+    const ev =
+      all.find(
+        (e) => e.date === decoded.date && e.home === decoded.home && e.away === decoded.away
+      ) || null;
+
+    if (!ev) {
+      return res.json({
+        meta: {
+          id: req.params.id,
+          type: 'tv',
+          name: `${decoded.home} - ${decoded.away}`,
+          description: 'Evento non più presente nel palinsesto corrente.',
+        },
+      });
+    }
+
+    res.json({ meta: toMeta(ev) });
+  } catch (err) {
+    console.error('meta error:', err.message);
+    res.json({ meta: null });
+  }
+});
+
+// Endpoint REST di comodo (browser/curl)
 app.get('/search', async (req, res) => {
   try {
     const { team, teamA, teamB } = req.query;
-    if (teamA && teamB) {
-      const result = await getEventByMatchup(teamA, teamB);
-      return res.json(result);
-    }
-    if (team) {
-      const result = await getUpcomingByTeam(team);
-      return res.json(result);
-    }
+    if (teamA && teamB) return res.json(await getEventByMatchup(teamA, teamB));
+    if (team) return res.json(await getUpcomingByTeam(team));
     res.status(400).json({ error: 'Specifica ?team=NOME oppure ?teamA=NOME&teamB=NOME' });
   } catch (err) {
     console.error(err);
@@ -86,24 +120,20 @@ app.get('/search', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => {
-  res.send(
-    'Addon Calcio TV Italia attivo. Manifest: /manifest.json — Ricerca test: /search?team=Juventus'
-  );
+// Lista completa palinsesto scrapato (utile per verifica rapida)
+app.get('/all', async (req, res) => {
+  try {
+    res.json(await scraper.getAllEvents());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-function buildDescription(ev) {
-  const parts = [];
-  parts.push(`${ev.home} vs ${ev.away}`);
-  if (ev.league) parts.push(`Competizione: ${ev.league}`);
-  if (ev.dateFormatted) parts.push(`Data: ${ev.dateFormatted}`);
-  if (ev.italianChannel) {
-    parts.push(`Canale/Piattaforma IT: ${ev.italianChannel} (fonte: ${ev.channelSource})`);
-  } else {
-    parts.push('Canale/Piattaforma IT: non ancora disponibile per questo evento');
-  }
-  return parts.join('\n');
-}
+app.get('/', (req, res) => {
+  res.send(
+    'Addon Calcio TV Italia attivo. Manifest: /manifest.json — Palinsesto: /all — Ricerca: /search?team=Juventus'
+  );
+});
 
 app.listen(PORT, () => {
   console.log(`Addon in ascolto su http://localhost:${PORT}`);
