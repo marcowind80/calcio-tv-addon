@@ -44,6 +44,22 @@ test/
 | `/refresh` | Forza aggiornamento immediato |
 | `/poster/<id>.png` | Locandina generata di un evento |
 
+### Variabili d'ambiente
+
+| Variabile | Default | Cosa fa |
+| --- | --- | --- |
+| `PORT` | `7860` | Porta di ascolto (Railway/Render la impostano da soli) |
+| `REFRESH_MINUTES` | `30` | Intervallo di autoaggiornamento del palinsesto |
+| `SPORTSDB_KEY` | `123` | Chiave TheSportsDB. `123` è la chiave pubblica di test: va bene per uso personale, per un servizio distribuito procurarsene una propria |
+| `POSTER_REV` | versione manifest | Token anti-cache negli URL delle locandine |
+
+### Usare il progetto come sorgente dati
+
+Se ti interessa solo il dato (partita → emittente italiana) e non l'addon,
+vedi **[INTEGRATION.md](INTEGRATION.md)**: documenta l'endpoint `/all`, il
+formato JSON, l'approccio consigliato per il matching con una lista canali e
+il vincolo dell'istanza singola per lo scraping.
+
 ## Requisito Node.js
 
 Serve **Node.js 20 o superiore**. Con Node 18 il deploy crasha con l'errore `ReferenceError: File is not defined` (dipendenza `undici`, usata da `axios`, richiede l'API globale `File` disponibile solo da Node 20). Il file `.nvmrc` e il campo `engines` in `package.json` dichiarano questo vincolo — assicurati che la piattaforma di hosting lo rispetti (Railway lo legge da `.nvmrc` automaticamente).
