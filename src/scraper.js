@@ -216,10 +216,63 @@ async function findEventByMatchup(teamA, teamB) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Autoaggiornamento del catalogo
+//
+// Senza questo, il primo utente che apre il catalogo dopo la scadenza della
+// cache paga l'attesa dello scraping. Con un job in background il palinsesto
+// viene rinfrescato da solo e le richieste trovano sempre dati pronti.
+// Intervallo configurabile con REFRESH_MINUTES (default 30).
+// ---------------------------------------------------------------------------
+let refreshTimer = null;
+let lastRefresh = null;
+let lastRefreshError = null;
+
+async function refreshNow() {
+  try {
+    const events = await getAllEvents({ forceRefresh: true });
+    lastRefresh = new Date().toISOString();
+    lastRefreshError = null;
+    console.log(`[refresh] palinsesto aggiornato: ${events.length} eventi (${lastRefresh})`);
+    return events;
+  } catch (err) {
+    lastRefreshError = err.message;
+    console.error('[refresh] errore:', err.message);
+    return [];
+  }
+}
+
+function startAutoRefresh() {
+  const minutes = parseInt(process.env.REFRESH_MINUTES || '30', 10);
+  const ms = Math.max(5, minutes) * 60 * 1000;
+
+  // Primo caricamento subito all'avvio, così il catalogo è pronto
+  // ancora prima della prima richiesta.
+  refreshNow();
+
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(refreshNow, ms);
+  if (refreshTimer.unref) refreshTimer.unref();
+
+  console.log(`[refresh] autoaggiornamento attivo ogni ${minutes} minuti`);
+  return refreshTimer;
+}
+
+function refreshStatus() {
+  return {
+    lastRefresh,
+    lastRefreshError,
+    intervalMinutes: parseInt(process.env.REFRESH_MINUTES || '30', 10),
+  };
+}
+
 module.exports = {
   getAllEvents,
   findEventsByTeamName,
   findEventByMatchup,
   normalizeTeamName,
   parsePage, // esportata anche per test unitari sul parsing HTML
+  startAutoRefresh,
+  refreshNow,
+  refreshStatus,
 };

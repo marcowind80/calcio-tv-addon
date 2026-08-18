@@ -3,6 +3,7 @@ const manifest = require('./manifest');
 const { getUpcomingByTeam, getEventByMatchup } = require('./matchup');
 const scraper = require('./scraper');
 const { encodeEventId, decodeEventId } = require('./eventId');
+const { renderPoster } = require('./poster');
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -34,14 +35,27 @@ function descriptionFor(ev) {
   return parts.join('\n');
 }
 
-function toMeta(ev) {
+// URL pubblico dell'istanza: dietro il proxy di Railway/Render occorre
+// leggere gli header x-forwarded-* altrimenti si otterrebbe http://localhost.
+function baseUrl(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${proto}://${host}`;
+}
+
+function toMeta(ev, req) {
+  const id = encodeEventId(ev);
+  const poster = `${baseUrl(req)}/poster/${id}.png`;
   return {
-    id: encodeEventId(ev),
+    id,
     type: 'tv',
     name: labelFor(ev),
     description: descriptionFor(ev),
     releaseInfo: [ev.date, ev.time].filter(Boolean).join(' '),
     genres: [ev.competition, ev.channel].filter(Boolean),
+    poster,
+    posterShape: 'poster',
+    background: poster,
   };
 }
 
@@ -51,7 +65,7 @@ function toMeta(ev) {
 app.get('/catalog/tv/:id.json', async (req, res) => {
   try {
     const all = await scraper.getAllEvents();
-    res.json({ metas: all.map(toMeta) });
+    res.json({ metas: all.map((ev) => toMeta(ev, req)) });
   } catch (err) {
     console.error('catalog error:', err.message);
     res.json({ metas: [] });
@@ -61,18 +75,29 @@ app.get('/catalog/tv/:id.json', async (req, res) => {
 app.get('/catalog/tv/:id/:extra.json', async (req, res) => {
   try {
     const extra = decodeURIComponent(req.params.extra || '');
-    const m = extra.match(/search=([^&]+)/);
-    const query = m ? decodeURIComponent(m[1]) : null;
 
-    if (!query) {
-      const all = await scraper.getAllEvents();
-      return res.json({ metas: all.map(toMeta) });
+    const searchMatch = extra.match(/search=([^&]+)/);
+    const genreMatch = extra.match(/genre=([^&]+)/);
+
+    if (searchMatch) {
+      const query = decodeURIComponent(searchMatch[1]);
+      const found = await scraper.findEventsByTeamName(query);
+      return res.json({ metas: found.map((ev) => toMeta(ev, req)) });
     }
 
-    const found = await scraper.findEventsByTeamName(query);
-    res.json({ metas: found.map(toMeta) });
+    const all = await scraper.getAllEvents();
+
+    if (genreMatch) {
+      const genre = decodeURIComponent(genreMatch[1]).toLowerCase().trim();
+      const filtered = all.filter(
+        (ev) => (ev.competition || '').toLowerCase().trim() === genre
+      );
+      return res.json({ metas: filtered.map((ev) => toMeta(ev, req)) });
+    }
+
+    res.json({ metas: all.map((ev) => toMeta(ev, req)) });
   } catch (err) {
-    console.error('catalog search error:', err.message);
+    console.error('catalog extra error:', err.message);
     res.json({ metas: [] });
   }
 });
@@ -100,10 +125,32 @@ app.get('/meta/tv/:id.json', async (req, res) => {
       });
     }
 
-    res.json({ meta: toMeta(ev) });
+    res.json({ meta: toMeta(ev, req) });
   } catch (err) {
     console.error('meta error:', err.message);
     res.json({ meta: null });
+  }
+});
+
+// Locandina PNG generata al volo per una scheda del catalogo.
+app.get('/poster/:id.png', async (req, res) => {
+  try {
+    const decoded = decodeEventId(req.params.id);
+    if (!decoded) return res.status(404).end();
+
+    const all = await scraper.getAllEvents();
+    const ev =
+      all.find(
+        (e) => e.date === decoded.date && e.home === decoded.home && e.away === decoded.away
+      ) || { ...decoded, competition: null, channel: null, time: null };
+
+    const png = await renderPoster(ev);
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=1800');
+    res.send(png);
+  } catch (err) {
+    console.error('poster error:', err.message);
+    res.status(500).end();
   }
 });
 
@@ -135,7 +182,19 @@ app.get('/', (req, res) => {
   );
 });
 
+// Stato dell'autoaggiornamento (diagnostica rapida)
+app.get('/status', (req, res) => {
+  res.json({ ok: true, ...scraper.refreshStatus() });
+});
+
+// Forza un aggiornamento immediato del palinsesto
+app.get('/refresh', async (req, res) => {
+  const events = await scraper.refreshNow();
+  res.json({ refreshed: true, events: events.length, ...scraper.refreshStatus() });
+});
+
 app.listen(PORT, () => {
   console.log(`Addon in ascolto su http://localhost:${PORT}`);
   console.log(`Manifest: http://localhost:${PORT}/manifest.json`);
+  scraper.startAutoRefresh();
 });

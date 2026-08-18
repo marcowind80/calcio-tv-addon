@@ -25,7 +25,30 @@ test/
   fixture.html      # HTML di esempio per validare il parser senza rete
 ```
 
-## Deploy (gratuito, es. Render.com)
+## Funzionalità
+
+- **Catalogo sfogliabile** in Nuvio/Stremio: si apre direttamente con le partite in programma.
+- **Filtro per competizione** (Serie A, Coppa Italia, Champions, La Liga...) dal menù a tendina.
+- **Locandine generate al volo**: ogni scheda mostra squadre, data/ora e canale incisi sull'immagine, con colore della piattaforma (DAZN verde, Sky blu, Mediaset rosso...). Così le info si leggono dalla griglia senza aprire nulla.
+- **Autoaggiornamento**: il palinsesto viene rinfrescato in background ogni 30 minuti (configurabile con la variabile d'ambiente `REFRESH_MINUTES`), più un caricamento immediato all'avvio.
+
+### Endpoint utili
+
+| Endpoint | Cosa fa |
+| --- | --- |
+| `/manifest.json` | Manifest da incollare in Nuvio |
+| `/all` | Palinsesto completo scrapato (JSON) |
+| `/search?team=Juventus` | Prossime partite di una squadra |
+| `/search?teamA=X&teamB=Y` | Singola partita tra due squadre |
+| `/status` | Stato autoaggiornamento (ultimo refresh, errori) |
+| `/refresh` | Forza aggiornamento immediato |
+| `/poster/<id>.png` | Locandina generata di un evento |
+
+## Requisito Node.js
+
+Serve **Node.js 20 o superiore**. Con Node 18 il deploy crasha con l'errore `ReferenceError: File is not defined` (dipendenza `undici`, usata da `axios`, richiede l'API globale `File` disponibile solo da Node 20). Il file `.nvmrc` e il campo `engines` in `package.json` dichiarano questo vincolo — assicurati che la piattaforma di hosting lo rispetti (Railway lo legge da `.nvmrc` automaticamente).
+
+## Deploy (gratuito, es. Render.com o Railway.app)
 
 1. Crea un repo Git con questa cartella (o carica via dashboard Render come "Web Service" da zip/GitHub).
 2. Su [render.com](https://render.com) → New → Web Service → connetti il repo.
