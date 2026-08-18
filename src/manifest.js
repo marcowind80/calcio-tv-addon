@@ -25,7 +25,7 @@ const COMPETITIONS = [
 
 module.exports = {
   id: 'org.marco.calciotvita',
-  version: '1.2.0',
+  version: '1.3.0',
   name: 'Calcio TV Italia',
   description:
     'Partite di calcio con canale/piattaforma italiana e data. Filtra per competizione. Dati canale da calciointv.com (fonte non ufficiale, best-effort).',

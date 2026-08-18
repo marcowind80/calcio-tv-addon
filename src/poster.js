@@ -147,4 +147,27 @@ async function renderPoster(ev) {
   return resvg.render().asPng();
 }
 
-module.exports = { renderPoster, buildSvg };
+// Diagnostica: verifica che i file font siano davvero presenti nel deploy.
+// Se `allPresent` è false le locandine escono con i quadratini (tofu).
+function fontCheck() {
+  const fs = require('fs');
+  const files = FONT_FILES.map((f) => {
+    let exists = false;
+    let size = 0;
+    try {
+      const st = fs.statSync(f);
+      exists = true;
+      size = st.size;
+    } catch (err) {
+      exists = false;
+    }
+    return { file: f, exists, size };
+  });
+  return {
+    fontDir: FONT_DIR,
+    allPresent: files.every((f) => f.exists && f.size > 0),
+    files,
+  };
+}
+
+module.exports = { renderPoster, buildSvg, fontCheck };

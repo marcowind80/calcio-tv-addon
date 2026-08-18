@@ -3,7 +3,12 @@ const manifest = require('./manifest');
 const { getUpcomingByTeam, getEventByMatchup } = require('./matchup');
 const scraper = require('./scraper');
 const { encodeEventId, decodeEventId } = require('./eventId');
-const { renderPoster } = require('./poster');
+const { renderPoster, fontCheck } = require('./poster');
+
+// Token di cache-busting negli URL delle locandine.
+// Nuvio/Stremio memorizzano le immagini per URL: senza questo, dopo un fix
+// grafico continuerebbero a mostrare la vecchia versione in cache.
+const POSTER_REV = process.env.POSTER_REV || manifest.version;
 
 const app = express();
 const PORT = process.env.PORT || 7860;
@@ -45,7 +50,7 @@ function baseUrl(req) {
 
 function toMeta(ev, req) {
   const id = encodeEventId(ev);
-  const poster = `${baseUrl(req)}/poster/${id}.png`;
+  const poster = `${baseUrl(req)}/poster/${id}.png?v=${POSTER_REV}`;
   return {
     id,
     type: 'tv',
@@ -182,9 +187,17 @@ app.get('/', (req, res) => {
   );
 });
 
-// Stato dell'autoaggiornamento (diagnostica rapida)
+// Stato dell'autoaggiornamento + diagnostica font (rapida)
 app.get('/status', (req, res) => {
-  res.json({ ok: true, ...scraper.refreshStatus() });
+  const fonts = fontCheck();
+  res.json({
+    ok: true,
+    version: manifest.version,
+    posterRev: POSTER_REV,
+    fontsOk: fonts.allPresent,
+    fonts,
+    ...scraper.refreshStatus(),
+  });
 });
 
 // Forza un aggiornamento immediato del palinsesto
