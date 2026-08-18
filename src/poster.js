@@ -2,7 +2,21 @@
 // Stremio/Nuvio mostra solo il poster nella griglia: incidendo le info
 // sull'immagine (squadre, data/ora, canale) diventano leggibili senza
 // dover aprire ogni singola scheda.
-const sharp = require('sharp');
+//
+// IMPORTANTE — font: i container di deploy (Railway/Render) non hanno font
+// di sistema installati. Renderizzando con i font di sistema il testo esce
+// come quadratini (tofu). Per questo il font viene incluso nel repo
+// (assets/fonts) e caricato esplicitamente, con loadSystemFonts disattivato
+// così il comportamento è identico ovunque.
+const path = require('path');
+const { Resvg } = require('@resvg/resvg-js');
+
+const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
+const FONT_FILES = [
+  path.join(FONT_DIR, 'DejaVuSans.ttf'),
+  path.join(FONT_DIR, 'DejaVuSans-Bold.ttf'),
+];
+const FONT_FAMILY = 'DejaVu Sans';
 
 const W = 300;
 const H = 450;
@@ -62,7 +76,7 @@ function teamBlock(name, yStart, maxChars, fontSize) {
   return lines
     .map(
       (ln, i) =>
-        `<text x="${W / 2}" y="${yStart + i * (fontSize + 4)}" fill="#f8fafc" font-size="${fontSize}" font-weight="700" text-anchor="middle" font-family="DejaVu Sans, sans-serif">${esc(ln)}</text>`
+        `<text x="${W / 2}" y="${yStart + i * (fontSize + 4)}" fill="#f8fafc" font-size="${fontSize}" font-weight="700" text-anchor="middle" font-family="DejaVu Sans">${esc(ln)}</text>`
     )
     .join('');
 }
@@ -100,30 +114,37 @@ function buildSvg(ev) {
   <rect x="0" y="0" width="${W}" height="6" fill="${accent}"/>
 
   <rect x="16" y="26" width="${W - 32}" height="30" rx="15" fill="${accent}" fill-opacity="0.16"/>
-  <text x="${W / 2}" y="46" fill="${accent}" font-size="15" font-weight="700" text-anchor="middle" font-family="DejaVu Sans, sans-serif">${esc((ev.competition || 'CALCIO').toUpperCase())}</text>
+  <text x="${W / 2}" y="46" fill="${accent}" font-size="15" font-weight="700" text-anchor="middle" font-family="DejaVu Sans">${esc((ev.competition || 'CALCIO').toUpperCase())}</text>
 
   ${teamBlock(ev.home, homeY, 16, 24)}
-  <text x="${W / 2}" y="${vsY}" fill="#94a3b8" font-size="15" font-weight="700" text-anchor="middle" font-family="DejaVu Sans, sans-serif">VS</text>
+  <text x="${W / 2}" y="${vsY}" fill="#94a3b8" font-size="15" font-weight="700" text-anchor="middle" font-family="DejaVu Sans">VS</text>
   ${teamBlock(ev.away, awayY, 16, 24)}
 
-  <text x="${W / 2}" y="${H - 116}" fill="#cbd5e1" font-size="17" font-weight="600" text-anchor="middle" font-family="DejaVu Sans, sans-serif">${esc(dataTxt)}</text>
+  <text x="${W / 2}" y="${H - 116}" fill="#cbd5e1" font-size="17" font-weight="600" text-anchor="middle" font-family="DejaVu Sans">${esc(dataTxt)}</text>
 
   <rect x="16" y="${H - 92}" width="${W - 32}" height="54" rx="10" fill="${accent}" fill-opacity="0.18" stroke="${accent}" stroke-opacity="0.5"/>
   ${wrap(canale, 20)
     .slice(0, 2)
     .map(
       (ln, i, arr) =>
-        `<text x="${W / 2}" y="${H - 92 + (arr.length === 1 ? 34 : 24 + i * 21)}" fill="${accent}" font-size="${arr.length === 1 ? 20 : 17}" font-weight="700" text-anchor="middle" font-family="DejaVu Sans, sans-serif">${esc(ln)}</text>`
+        `<text x="${W / 2}" y="${H - 92 + (arr.length === 1 ? 34 : 24 + i * 21)}" fill="${accent}" font-size="${arr.length === 1 ? 20 : 17}" font-weight="700" text-anchor="middle" font-family="DejaVu Sans">${esc(ln)}</text>`
     )
     .join('')}
 
-  <text x="${W / 2}" y="${H - 14}" fill="#475569" font-size="11" text-anchor="middle" font-family="DejaVu Sans, sans-serif">calciointv.com</text>
+  <text x="${W / 2}" y="${H - 14}" fill="#475569" font-size="11" text-anchor="middle" font-family="DejaVu Sans">calciointv.com</text>
 </svg>`;
 }
 
 async function renderPoster(ev) {
   const svg = buildSvg(ev);
-  return sharp(Buffer.from(svg)).png().toBuffer();
+  const resvg = new Resvg(svg, {
+    font: {
+      loadSystemFonts: false, // deterministico: usa solo i font inclusi nel repo
+      fontFiles: FONT_FILES,
+      defaultFontFamily: FONT_FAMILY,
+    },
+  });
+  return resvg.render().asPng();
 }
 
 module.exports = { renderPoster, buildSvg };
